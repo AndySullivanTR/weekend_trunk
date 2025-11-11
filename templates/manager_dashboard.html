@@ -333,6 +333,9 @@
                 <button class="btn btn-primary" onclick="exportExcel()">
                     Export to Excel
                 </button>
+                <button class="btn btn-warning" onclick="populateTestData()">
+                    🧪 Populate Test Data
+                </button>
             </div>
             {% if submitted_count < total_employees %}
             <div style="margin-top: 15px; color: #856404;">
@@ -547,6 +550,31 @@
         
         function exportExcel() {
             window.location.href = '/api/export-excel';
+        }
+        
+        async function populateTestData() {
+            if (!confirm('This will populate random preferences for all 30 employees. Continue?')) {
+                return;
+            }
+            
+            showAlert('⏳ Populating test data...', 'info');
+            
+            try {
+                const response = await fetch('/api/populate-test-data', {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('✅ ' + data.message, 'success');
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showAlert('Failed to populate test data.', 'danger');
+                }
+            } catch (error) {
+                showAlert('An error occurred.', 'danger');
+            }
         }
     </script>
 </body>
