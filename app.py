@@ -10,13 +10,9 @@ import random
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.dirname(BASE_DIR)
 
-# Look for templates in parent directory first, then current directory
-if os.path.exists(os.path.join(PARENT_DIR, 'templates')):
-    template_folder = os.path.join(PARENT_DIR, 'templates')
-else:
-    template_folder = os.path.join(BASE_DIR, 'templates')
-
+template_folder = os.path.join(BASE_DIR, 'templates')
 app = Flask(__name__, template_folder=template_folder)
+
 # Fixed secret key for session persistence across restarts
 app.secret_key = 'weekend-trunk-shifts-secret-key-2025'
 
