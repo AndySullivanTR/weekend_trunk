@@ -2,7 +2,7 @@ services:
   - type: web
     name: weekend-trunk-shifts
     env: python
-    plan: free
+    plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:

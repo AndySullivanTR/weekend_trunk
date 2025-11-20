@@ -280,6 +280,47 @@
         .shift-row.vacant {
             background: #f8d7da;
         }
+        
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: #000;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover:not(:disabled) {
+            background: #5a6268;
+        }
     </style>
 </head>
 <body>
@@ -288,7 +329,10 @@
             <div>
                 <h1>Manager Dashboard - Weekend Trunk Shifts</h1>
             </div>
-            <a href="/logout" class="logout-btn">Logout</a>
+            <div>
+                <button onclick="showPasswordModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">Change Password</button>
+                <a href="/logout" class="logout-btn">Logout</a>
+            </div>
         </header>
         
         <div id="alert-container"></div>
@@ -320,28 +364,16 @@
                 <button class="btn btn-primary" onclick="updateDeadline()">Update Deadline</button>
             </div>
             <div class="action-buttons">
-                <button class="btn btn-success" onclick="allocateShifts()" 
-                        {% if submitted_count < total_employees %}disabled{% endif %}>
+                <button class="btn btn-success" onclick="allocateShifts()">
                     Assign Shifts
-                </button>
-                <button class="btn btn-warning" onclick="lockPreferences()">
-                    {% if settings.is_locked %}Unlock{% else %}Lock{% endif %} Preferences
-                </button>
-                <button class="btn btn-primary" onclick="downloadBackup()">
-                    Download Backup (JSON)
                 </button>
                 <button class="btn btn-primary" onclick="exportExcel()">
                     Download Schedule
                 </button>
-                <button class="btn btn-warning" onclick="populateTestData()">
-                    🧪 Populate Test Data
+                <button class="btn btn-warning" onclick="lockPreferences()">
+                    {% if settings.is_locked %}Unlock{% else %}Lock{% endif %} Preferences
                 </button>
             </div>
-            {% if submitted_count < total_employees %}
-            <div style="margin-top: 15px; color: #856404;">
-                ⚠️ Cannot allocate shifts until all employees have submitted preferences.
-            </div>
-            {% endif %}
         </div>
         
         <div class="submissions-list">
@@ -448,6 +480,21 @@
         {% endif %}
     </div>
     
+    <!-- Password Change Modal -->
+    <div id="passwordModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closePasswordModal()">&times;</span>
+            <h2>Change Password</h2>
+            <div style="margin-top: 20px;">
+                <input type="password" id="current-password" placeholder="Current Password" style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                <input type="password" id="new-password" placeholder="New Password (min 6 characters)" style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                <input type="password" id="confirm-password" placeholder="Confirm New Password" style="width: 100%; padding: 10px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 5px;">
+                <button class="btn btn-primary" onclick="submitPasswordChange()">Change Password</button>
+                <button class="btn btn-secondary" onclick="closePasswordModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
     <script>
         function showAlert(message, type) {
             const container = document.getElementById('alert-container');
@@ -534,7 +581,13 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    showAlert('✅ Shifts allocated successfully! Check the console for details.', 'success');
+                    let message = '✅ Shifts allocated successfully!';
+                    if (data.warnings && data.warnings.length > 0) {
+                        message += '\n\nWarnings:\n' + data.warnings.join('\n');
+                        alert(message);
+                    } else {
+                        showAlert(message, 'success');
+                    }
                     setTimeout(() => location.reload(), 2000);
                 } else {
                     showAlert(data.error || 'Failed to allocate shifts.', 'danger');
@@ -571,6 +624,62 @@
                     setTimeout(() => location.reload(), 2000);
                 } else {
                     showAlert('Failed to populate test data.', 'danger');
+                }
+            } catch (error) {
+                showAlert('An error occurred.', 'danger');
+            }
+        }
+        
+        function showPasswordModal() {
+            document.getElementById('passwordModal').style.display = 'block';
+        }
+        
+        function closePasswordModal() {
+            document.getElementById('passwordModal').style.display = 'none';
+            document.getElementById('current-password').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-password').value = '';
+        }
+        
+        async function submitPasswordChange() {
+            const currentPassword = document.getElementById('current-password').value;
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            
+            if (!currentPassword || !newPassword || !confirmPassword) {
+                showAlert('Please fill in all fields.', 'danger');
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                showAlert('New password must be at least 6 characters.', 'danger');
+                return;
+            }
+            
+            if (newPassword !== confirmPassword) {
+                showAlert('New passwords do not match.', 'danger');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/change-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        current_password: currentPassword,
+                        new_password: newPassword
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ Password changed successfully!');
+                    closePasswordModal();
+                } else {
+                    showAlert(data.error || 'Failed to change password.', 'danger');
                 }
             } catch (error) {
                 showAlert('An error occurred.', 'danger');

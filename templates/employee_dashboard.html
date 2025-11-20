@@ -369,6 +369,7 @@
                 <h1>Weekend Trunk Shifts</h1>
                 <div class="user-info">Logged in as: {{ username }}</div>
             </div>
+            <button onclick="openPasswordModal()" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">Change Password</button>
             <a href="/logout" class="logout-btn">Logout</a>
         </header>
         
@@ -412,7 +413,7 @@
             <h3>General Shift Type Preference</h3>
             <div class="shift-type-item">
                 <label>Saturday 11 AM - 7 PM</label>
-                <select id="pref-saturday" class="shift-type-select">
+                <select id="pref-saturday" class="shift-type-select" onchange="validateShiftTypeRankings()">
                     <option value="">-</option>
                     <option value="1">1st</option>
                     <option value="2">2nd</option>
@@ -421,7 +422,7 @@
             </div>
             <div class="shift-type-item">
                 <label>Sunday 8 AM - 4 PM</label>
-                <select id="pref-sunday-morning" class="shift-type-select">
+                <select id="pref-sunday-morning" class="shift-type-select" onchange="validateShiftTypeRankings()">
                     <option value="">-</option>
                     <option value="1">1st</option>
                     <option value="2">2nd</option>
@@ -430,7 +431,7 @@
             </div>
             <div class="shift-type-item">
                 <label>Sunday 3 PM - 10 PM</label>
-                <select id="pref-sunday-evening" class="shift-type-select">
+                <select id="pref-sunday-evening" class="shift-type-select" onchange="validateShiftTypeRankings()">
                     <option value="">-</option>
                     <option value="1">1st</option>
                     <option value="2">2nd</option>
@@ -683,6 +684,24 @@
             }, 5000);
         }
         
+        function validateShiftTypeRankings() {
+            const satPref = document.getElementById('pref-saturday').value;
+            const sunMornPref = document.getElementById('pref-sunday-morning').value;
+            const sunEvePref = document.getElementById('pref-sunday-evening').value;
+            
+            // If all are filled, check for duplicates
+            if (satPref && sunMornPref && sunEvePref) {
+                const rankings = [satPref, sunMornPref, sunEvePref];
+                const uniqueRankings = new Set(rankings);
+                
+                if (uniqueRankings.size !== 3) {
+                    alert('⚠️ Each shift type must have a different ranking (1, 2, 3).');
+                    // Reset the one just changed to empty
+                    event.target.value = '';
+                }
+            }
+        }
+        
         document.getElementById('submit-btn')?.addEventListener('click', async () => {
             // Validate shift type preferences
             const satPref = document.getElementById('pref-saturday').value;
@@ -690,7 +709,7 @@
             const sunEvePref = document.getElementById('pref-sunday-evening').value;
             
             if (!satPref || !sunMornPref || !sunEvePref) {
-                showAlert('Please rank all three shift types.', 'danger');
+                alert('Please rank all three shift types.');
                 return;
             }
             
@@ -698,18 +717,18 @@
             const rankings = [satPref, sunMornPref, sunEvePref];
             const uniqueRankings = new Set(rankings);
             if (uniqueRankings.size !== 3) {
-                showAlert('Each shift type must have a different ranking (1, 2, 3).', 'danger');
+                alert('Each shift type must have a different ranking (1, 2, 3).');
                 return;
             }
             
             // Validate selections
             if (topPreferences.length !== 12) {
-                showAlert('Please select exactly 12 top preferences.', 'danger');
+                alert('Please select exactly 12 top preferences.');
                 return;
             }
             
             if (bottomPreferences.length !== 6) {
-                showAlert('Please select exactly 6 bottom preferences.', 'danger');
+                alert('Please select exactly 6 bottom preferences.');
                 return;
             }
             
@@ -737,10 +756,10 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    showAlert('✅ Preferences submitted successfully!', 'success');
+                    alert('✅ Preferences submitted successfully!');
                     setTimeout(() => {
                         location.reload();
-                    }, 2000);
+                    }, 1000);
                 } else {
                     showAlert(data.error || 'Failed to submit preferences.', 'danger');
                     submitBtn.disabled = false;
@@ -755,6 +774,87 @@
         
         // Initial render
         renderShifts();
+
+        function openPasswordModal() {
+            document.getElementById('change-password-modal').style.display = 'flex';
+            document.getElementById('current-password').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-password').value = '';
+        }
+        
+        function closePasswordModal() {
+            document.getElementById('change-password-modal').style.display = 'none';
+        }
+        
+        async function submitPasswordChange() {
+            const currentPassword = document.getElementById('current-password').value;
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            
+            if (!currentPassword || !newPassword || !confirmPassword) {
+                showAlert('Please fill in all fields.', 'danger');
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                showAlert('New password must be at least 6 characters.', 'danger');
+                return;
+            }
+            
+            if (newPassword !== confirmPassword) {
+                showAlert('New passwords do not match.', 'danger');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/change-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        current_password: currentPassword,
+                        new_password: newPassword
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('✅ Password changed successfully!');
+                    closePasswordModal();
+                } else {
+                    showAlert(data.error || 'Failed to change password.', 'danger');
+                }
+            } catch (error) {
+                showAlert('An error occurred.', 'danger');
+            }
+        }
+        
     </script>
+
+    <!-- Password Change Modal -->
+    <div id="change-password-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 30px; border-radius: 10px; max-width: 400px; width: 90%;">
+            <h2 style="margin-bottom: 20px; color: #333;">Change Password</h2>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; color: #666;">Current Password:</label>
+                <input type="password" id="current-password" style="width: 100%; padding: 8px; border: 2px solid #e1e4e8; border-radius: 5px; font-size: 14px;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; color: #666;">New Password (min 6 characters):</label>
+                <input type="password" id="new-password" style="width: 100%; padding: 8px; border: 2px solid #e1e4e8; border-radius: 5px; font-size: 14px;">
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; color: #666;">Confirm New Password:</label>
+                <input type="password" id="confirm-password" style="width: 100%; padding: 8px; border: 2px solid #e1e4e8; border-radius: 5px; font-size: 14px;">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="submitPasswordChange()" style="flex: 1; padding: 12px; background: #4a90e2; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">Change Password</button>
+                <button onclick="closePasswordModal()" style="flex: 1; padding: 12px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

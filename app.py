@@ -366,25 +366,35 @@ def allocate_shifts():
     # Get list of non-manager employees
     employee_list = [user for user, emp in employees_data.items() if not emp.get('is_manager')]
     
-    # Validate all employees have submitted preferences
+    # Separate employees into two groups:
+    # 1. Those with complete preferences (top 12 + bottom 6)
+    # 2. Those without complete preferences (will be randomly assigned)
+    employees_with_prefs = []
+    employees_without_prefs = []
+    
     for emp in employee_list:
-        if emp not in preferences:
-            return jsonify({'error': f'{emp} has not submitted preferences'}), 400
-        
-        prefs = preferences[emp]
-        if len(prefs.get('top_12', [])) != 12 or len(prefs.get('bottom_6', [])) != 6:
-            return jsonify({'error': f'{emp} has incomplete preferences'}), 400
+        if emp in preferences:
+            prefs = preferences[emp]
+            if len(prefs.get('top_12', [])) == 12 and len(prefs.get('bottom_6', [])) == 6:
+                employees_with_prefs.append(emp)
+            else:
+                employees_without_prefs.append(emp)
+        else:
+            employees_without_prefs.append(emp)
     
     # Initialize assignments
     assignments = {emp: [] for emp in employee_list}
     shift_assignments = {shift['id']: [] for shift in SHIFTS}
+    warnings = []  # Track employees who were randomly assigned
     
     # Set random seed for reproducibility
     random.seed(42)
     
-    # PHASE 1: First shift allocation (random order)
-    print("\n=== PHASE 1: First Shift Allocation ===")
-    shuffled_employees = employee_list.copy()
+    # PHASE 1: Preference-based allocation for employees with complete preferences
+    print("\n=== PHASE 1: Preference-Based Allocation ===")
+    print(f"Processing {len(employees_with_prefs)} employees with complete preferences\n")
+    
+    shuffled_employees = employees_with_prefs.copy()
     random.shuffle(shuffled_employees)
     
     for emp in shuffled_employees:
@@ -463,12 +473,12 @@ def allocate_shifts():
         if not assigned:
             print(f"✗ {emp:15} → Could not assign first shift")
     
-    # PHASE 2: Second shift allocation (sorted by satisfaction from Phase 1)
-    print("\n=== PHASE 2: Second Shift Allocation ===")
+    # PHASE 2: Second shift allocation for employees with preferences (sorted by satisfaction from Phase 1)
+    print("\n=== PHASE 2: Second Shift Allocation (Preference-Based) ===")
     
     # Calculate satisfaction scores from Phase 1
     employee_satisfaction = []
-    for emp in employee_list:
+    for emp in employees_with_prefs:
         if len(assignments[emp]) > 0:
             score = calculate_satisfaction_score(preferences[emp], assignments[emp][0])
             employee_satisfaction.append((emp, score))
@@ -561,6 +571,40 @@ def allocate_shifts():
         if not assigned:
             print(f"✗ {emp:15} → Could not assign second shift")
     
+    # PHASE 3: Random assignment for employees without complete preferences
+    if employees_without_prefs:
+        print("\n=== PHASE 3: Random Assignment for Laggards ===")
+        print(f"Processing {len(employees_without_prefs)} employees without complete preferences\n")
+        
+        for emp in employees_without_prefs:
+            warnings.append(f"{emp} was randomly assigned (no preferences submitted)")
+            
+            # Get all available shifts (not full, not creating weekend conflicts)
+            available_shifts = []
+            for shift in SHIFTS:
+                shift_id = shift['id']
+                
+                # Skip if shift is full
+                if len(shift_assignments[shift_id]) >= shift['slots']:
+                    continue
+                
+                # Skip if would create same-weekend conflict
+                if has_same_weekend_conflict(assignments[emp], shift_id):
+                    continue
+                
+                available_shifts.append(shift_id)
+            
+            # Randomly assign 2 shifts from available shifts
+            if len(available_shifts) >= 2:
+                selected_shifts = random.sample(available_shifts, 2)
+                for shift_id in selected_shifts:
+                    assignments[emp].append(shift_id)
+                    shift_assignments[shift_id].append(emp)
+                    print(f"⚠ {emp:15} → Shift {shift_id:2} (random assignment)")
+            else:
+                print(f"✗ {emp:15} → Not enough available shifts for random assignment")
+                warnings.append(f"{emp} could not be fully assigned - insufficient available shifts")
+    
     # Save assignments
     save_json(ASSIGNMENTS_FILE, assignments)
     
@@ -572,7 +616,8 @@ def allocate_shifts():
     return jsonify({
         'success': True,
         'assignments': assignments,
-        'shift_assignments': shift_assignments
+        'shift_assignments': shift_assignments,
+        'warnings': warnings
     })
 
 @app.route('/api/backup')
@@ -804,6 +849,40 @@ def export_excel():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/change-password', methods=['POST'])
+def change_password():
+    """Allow users to change their password"""
+    if 'username' not in session:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    username = session['username']
+    data = request.json
+    
+    current_password = data.get('current_password')
+    new_password = data.get('new_password')
+    
+    if not current_password or not new_password:
+        return jsonify({'error': 'Current and new password required'}), 400
+    
+    if len(new_password) < 6:
+        return jsonify({'error': 'New password must be at least 6 characters'}), 400
+    
+    employees = get_employees()
+    
+    # Verify current password
+    if username not in employees:
+        return jsonify({'error': 'User not found'}), 404
+    
+    if not check_password_hash(employees[username]['password'], current_password):
+        return jsonify({'error': 'Current password is incorrect'}), 401
+    
+    # Update password
+    employees[username]['password'] = generate_password_hash(new_password)
+    save_json(EMPLOYEES_FILE, employees)
+    
+    return jsonify({'success': True, 'message': 'Password changed successfully'})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
