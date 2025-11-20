@@ -134,6 +134,31 @@ def get_settings():
 def get_assignments():
     return load_json(ASSIGNMENTS_FILE)
 
+def format_deadline(iso_datetime_str):
+    """Format ISO datetime to readable format: 'Nov. 27, 2025 3:24 a.m. ET'"""
+    dt = datetime.fromisoformat(iso_datetime_str)
+    month = dt.strftime('%b')
+    day = dt.day
+    year = dt.year
+    hour = dt.hour
+    minute = dt.minute
+    
+    # Convert to 12-hour format with am/pm
+    if hour == 0:
+        hour_12 = 12
+        am_pm = 'a.m.'
+    elif hour < 12:
+        hour_12 = hour
+        am_pm = 'a.m.'
+    elif hour == 12:
+        hour_12 = 12
+        am_pm = 'p.m.'
+    else:
+        hour_12 = hour - 12
+        am_pm = 'p.m.'
+    
+    return f"{month}. {day}, {year} {hour_12}:{minute:02d} {am_pm} ET"
+
 def calculate_satisfaction_score(preferences, assigned_shift_id):
     """
     Calculate satisfaction score for a single assigned shift.
@@ -238,12 +263,15 @@ def employee_dashboard():
     deadline = datetime.fromisoformat(settings['deadline'])
     is_locked = settings.get('is_locked', False) or datetime.now() > deadline
     
+    # Format deadline for display
+    formatted_deadline = format_deadline(settings['deadline'])
+    
     return render_template('employee_dashboard.html',
                          username=username,
                          shifts=SHIFTS,
                          preferences=user_prefs,
                          assignments=user_assignments,
-                         deadline=settings['deadline'],
+                         deadline=formatted_deadline,
                          is_locked=is_locked)
 
 @app.route('/api/employees', methods=['GET', 'POST', 'DELETE'])
@@ -883,6 +911,80 @@ def change_password():
     save_json(EMPLOYEES_FILE, employees)
     
     return jsonify({'success': True, 'message': 'Password changed successfully'})
+
+# Trunk writer credentials data (embedded to avoid CSV file dependency)
+TRUNK_WRITER_CREDENTIALS = [
+    {"name": "Ali, Idrees", "username": "idrees.ali", "password": "2lf92k"},
+    {"name": "Allen, Jonathan", "username": "jonathan.allen", "password": "Rml6iy"},
+    {"name": "Alper, Alexandra", "username": "alexandra.alper", "password": "2xgrpb"},
+    {"name": "Ax, Joseph A.", "username": "joseph.ax", "password": "svwBap"},
+    {"name": "Brooks, Brad", "username": "brad.brooks", "password": "PXU389"},
+    {"name": "Brunnstrom, David R.", "username": "david.brunnstrom", "password": "vHkw82"},
+    {"name": "Coster, Helen A.", "username": "helen.coster", "password": "5KPZyQ"},
+    {"name": "Cowan, Richard J.", "username": "richard.cowan", "password": "NztlMK"},
+    {"name": "Erickson, Bo", "username": "bo.erickson", "password": "c5zC2l"},
+    {"name": "Gorman, Steve J.", "username": "steve.gorman", "password": "EvxNGj"},
+    {"name": "Goudsward, Andrew", "username": "andrew.goudsward", "password": "BOQXUQ"},
+    {"name": "Harte, Julia", "username": "julia.harte", "password": "dHSGh4"},
+    {"name": "Heath, Brad", "username": "brad.heath", "password": "014mtj"},
+    {"name": "Heavey, Susan", "username": "sheavey", "password": "Y5QaRO"},
+    {"name": "Hesson, Ted", "username": "ted.hesson", "password": "x2vGuM"},
+    {"name": "Kruzel, John", "username": "john.kruzel", "password": "YH3hq7"},
+    {"name": "Lawder, David", "username": "david.lawder", "password": "p5IBz2"},
+    {"name": "Layne, Nathan", "username": "nathan.layne", "password": "m2D50J"},
+    {"name": "Lewis, Simon", "username": "simon.lewis", "password": "CBm7wr"},
+    {"name": "Martina, Michael", "username": "michael.martina", "password": "HZPo9k"},
+    {"name": "Morgan, David G.", "username": "david.morgan", "password": "qVO46H"},
+    {"name": "Oliphant, Jim", "username": "james.oliphant", "password": "usJlEx"},
+    {"name": "Reid, Timothy J.", "username": "tim.reid", "password": "KBYjFi"},
+    {"name": "Satter, Raphael", "username": "raphael.satter", "password": "3d4NLr"},
+    {"name": "Spetalnick, Matt S.", "username": "matt.spetalnick", "password": "DlBsRU"},
+    {"name": "Stewart, Phillip", "username": "phillip.stewart", "password": "iY0ChY"},
+    {"name": "Sullivan, Andy", "username": "andy.sullivan", "password": "3J0zdD"},
+    {"name": "Tanfani, Joseph", "username": "joseph.tanfani", "password": "S0Eu19"},
+    {"name": "Trotta, Daniel", "username": "daniel.trotta", "password": "43pdyN"},
+    {"name": "Zengerle, Patricia A.", "username": "patricia.zengerle", "password": "US1VPF"},
+]
+
+@app.route('/api/reload-employees-from-csv', methods=['POST'])
+def reload_employees_from_csv():
+    """Reload employee accounts from embedded credentials data (ADMIN ONLY)"""
+    if not session.get('is_manager'):
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        employees = {}
+        
+        # Add admin account
+        employees['admin'] = {
+            'name': 'Admin',
+            'is_manager': True,
+            'password': generate_password_hash('admin123')
+        }
+        
+        # Add all trunk writers from embedded data
+        for writer in TRUNK_WRITER_CREDENTIALS:
+            username = writer['username']
+            name = writer['name']
+            password = writer['password']
+            
+            employees[username] = {
+                'name': name,
+                'is_manager': False,
+                'password': generate_password_hash(password)
+            }
+        
+        # Save to employees.json
+        save_json(EMPLOYEES_FILE, employees)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully reloaded {len(employees) - 1} trunk writer accounts',
+            'total_accounts': len(employees)
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
