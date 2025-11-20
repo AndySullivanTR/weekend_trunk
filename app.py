@@ -264,7 +264,11 @@ def employee_dashboard():
     is_locked = settings.get('is_locked', False) or datetime.now() > deadline
     
     # Format deadline for display
-    formatted_deadline = format_deadline(settings['deadline'])
+    try:
+        formatted_deadline = format_deadline(settings['deadline'])
+    except Exception as e:
+        # Fallback to original format if formatting fails
+        formatted_deadline = settings['deadline']
     
     return render_template('employee_dashboard.html',
                          username=username,
