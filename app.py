@@ -189,6 +189,26 @@ def has_same_weekend_conflict(employee_shifts, new_shift_id):
     
     return False
 
+def has_consecutive_shift_conflict(employee_shifts, new_shift_id):
+    """
+    Check if assigning new_shift_id would create consecutive/overlapping shifts.
+    This catches Sunday 8am-4pm + Sunday 3pm-10pm on same day.
+    Returns True if there's a conflict.
+    """
+    new_shift = next(s for s in SHIFTS if s['id'] == new_shift_id)
+    new_date = new_shift['date']
+    new_day = new_shift['day']
+    
+    # Check all employee's existing shifts
+    for shift_id in employee_shifts:
+        existing_shift = next(s for s in SHIFTS if s['id'] == shift_id)
+        
+        # If same date and same day (Sunday has 2 shifts), it's consecutive/overlapping
+        if existing_shift['date'] == new_date and existing_shift['day'] == new_day:
+            return True
+    
+    return False
+
 # Routes
 @app.route('/')
 def index():
@@ -446,6 +466,10 @@ def allocate_shifts():
             if has_same_weekend_conflict(assignments[emp], shift_id):
                 continue
             
+            # Skip if would create consecutive shift conflict
+            if has_consecutive_shift_conflict(assignments[emp], shift_id):
+                continue
+            
             # Assign shift
             assignments[emp].append(shift_id)
             shift_assignments[shift_id].append(emp)
@@ -490,6 +514,10 @@ def allocate_shifts():
                     
                     # Skip if would create same-weekend conflict
                     if has_same_weekend_conflict(assignments[emp], shift_id):
+                        continue
+                    
+                    # Skip if would create consecutive shift conflict
+                    if has_consecutive_shift_conflict(assignments[emp], shift_id):
                         continue
                     
                     # Assign shift
@@ -543,6 +571,10 @@ def allocate_shifts():
             
             # Skip if would create same-weekend conflict
             if has_same_weekend_conflict(assignments[emp], shift_id):
+                continue
+            
+            # Skip if would create consecutive shift conflict
+            if has_consecutive_shift_conflict(assignments[emp], shift_id):
                 continue
             
             # Assign shift
@@ -622,6 +654,10 @@ def allocate_shifts():
                 
                 # Skip if would create same-weekend conflict
                 if has_same_weekend_conflict(assignments[emp], shift_id):
+                    continue
+                
+                # Skip if would create consecutive shift conflict
+                if has_consecutive_shift_conflict(assignments[emp], shift_id):
                     continue
                 
                 available_shifts.append(shift_id)
