@@ -1135,5 +1135,43 @@ def list_backups():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/initialize-system', methods=['GET'])
+def initialize_system():
+    """PUBLIC ENDPOINT: Initialize employees.json from embedded credentials (NO AUTH REQUIRED)"""
+    try:
+        employees = {}
+        
+        # Add admin account
+        employees['admin'] = {
+            'name': 'Admin',
+            'is_manager': True,
+            'password': generate_password_hash('admin123')
+        }
+        
+        # Add all trunk writers from embedded data
+        for writer in TRUNK_WRITER_CREDENTIALS:
+            username = writer['username']
+            name = writer['name']
+            password = writer['password']
+            
+            employees[username] = {
+                'name': name,
+                'is_manager': False,
+                'password': generate_password_hash(password)
+            }
+        
+        # Save to employees.json
+        save_json(EMPLOYEES_FILE, employees)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully initialized {len(employees) - 1} trunk writer accounts + admin',
+            'total_accounts': len(employees),
+            'note': 'You can now login with your credentials'
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
