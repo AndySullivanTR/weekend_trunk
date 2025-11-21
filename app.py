@@ -309,16 +309,30 @@ def employee_dashboard():
     user_prefs = preferences.get(username, {})
     user_assignments = assignments.get(username, [])
     
-    # Check if deadline has passed
-    deadline = datetime.fromisoformat(settings['deadline'])
-    is_locked = settings.get('is_locked', False) or datetime.now() > deadline
+    # Check if deadline has passed - with error handling
+    try:
+        deadline_str = settings['deadline']
+        # Remove timezone info if present to make comparison work
+        if 'T' in deadline_str:
+            # Parse and strip timezone info
+            deadline = datetime.fromisoformat(deadline_str.replace('Z', '+00:00'))
+            # Make it naive for comparison
+            deadline = deadline.replace(tzinfo=None)
+        else:
+            deadline = datetime.fromisoformat(deadline_str)
+        
+        is_locked = settings.get('is_locked', False) or datetime.now() > deadline
+    except (ValueError, KeyError, AttributeError) as e:
+        # If deadline parsing fails, default to unlocked
+        print(f"Warning: Could not parse deadline: {e}")
+        is_locked = settings.get('is_locked', False)
     
     # Format deadline for display
     try:
         formatted_deadline = format_deadline(settings['deadline'])
     except Exception as e:
         # Fallback to original format if formatting fails
-        formatted_deadline = settings['deadline']
+        formatted_deadline = settings.get('deadline', 'Not set')
     
     return render_template('employee_dashboard.html',
                          username=username,
@@ -382,9 +396,18 @@ def manage_preferences():
     preferences = get_preferences()
     settings = get_settings()
     
-    # Check if locked
-    deadline = datetime.fromisoformat(settings['deadline'])
-    is_locked = settings.get('is_locked', False) or datetime.now() > deadline
+    # Check if locked - with proper timezone handling
+    try:
+        deadline_str = settings['deadline']
+        if 'T' in deadline_str:
+            deadline = datetime.fromisoformat(deadline_str.replace('Z', '+00:00'))
+            deadline = deadline.replace(tzinfo=None)
+        else:
+            deadline = datetime.fromisoformat(deadline_str)
+        
+        is_locked = settings.get('is_locked', False) or datetime.now() > deadline
+    except (ValueError, KeyError, AttributeError):
+        is_locked = settings.get('is_locked', False)
     
     if request.method == 'POST':
         if is_locked and not session.get('is_manager'):
