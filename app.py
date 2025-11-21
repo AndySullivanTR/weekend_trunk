@@ -1196,5 +1196,39 @@ def initialize_system():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/restore-from-backup', methods=['POST'])
+def restore_from_backup():
+    """Restore preferences from a backup JSON (ADMIN ONLY)"""
+    if not session.get('is_manager'):
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        data = request.json
+        
+        # Expecting full backup format with 'preferences' key
+        if 'preferences' not in data:
+            return jsonify({'error': 'Invalid backup format - missing preferences'}), 400
+        
+        # Create backup of current state before restoring
+        create_auto_backup()
+        
+        # Restore preferences
+        preferences = data['preferences']
+        save_json(PREFERENCES_FILE, preferences)
+        
+        # Optionally restore settings if provided
+        if 'settings' in data:
+            settings = data['settings']
+            save_json(SETTINGS_FILE, settings)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully restored {len(preferences)} preference submissions',
+            'preferences_restored': len(preferences)
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
