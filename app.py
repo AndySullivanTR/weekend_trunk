@@ -1238,5 +1238,158 @@ def restore_from_backup():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/allocation-report')
+def allocation_report():
+    """Generate preference satisfaction report after allocation (ADMIN ONLY)"""
+    if not session.get('is_manager'):
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        preferences = get_preferences()
+        assignments = get_assignments()
+        employees_data = get_employees()
+        
+        # Analyze allocation results
+        rank_counts = {i: 0 for i in range(1, 13)}  # Top 12 ranks
+        fallback_count = 0
+        bottom_6_violations = []
+        fallback_writers = []
+        total_shifts_assigned = 0
+        
+        for username, assigned_shifts in assignments.items():
+            if not assigned_shifts or username not in preferences:
+                continue
+            
+            prefs = preferences[username]
+            top_12 = prefs.get('top_12', [])
+            bottom_6 = prefs.get('bottom_6', [])
+            
+            # Check each assigned shift
+            for assigned_shift in assigned_shifts:
+                total_shifts_assigned += 1
+                
+                # Check if in top_12
+                if assigned_shift in top_12:
+                    rank = top_12.index(assigned_shift) + 1
+                    rank_counts[rank] += 1
+                # Check if in bottom_6 (should never happen!)
+                elif assigned_shift in bottom_6:
+                    bottom_6_violations.append({
+                        'name': employees_data[username]['name'],
+                        'username': username,
+                        'shift_id': assigned_shift
+                    })
+                # Fallback assignment
+                else:
+                    fallback_count += 1
+                    fallback_writers.append({
+                        'name': employees_data[username]['name'],
+                        'username': username,
+                        'shift_id': assigned_shift
+                    })
+        
+        total_with_prefs = sum(1 for prefs in preferences.values() 
+                               if prefs and len(prefs.get('top_12', [])) == 12)
+        top_12_total = sum(rank_counts.values())
+        expected_total_shifts = total_with_prefs * 2  # Each writer gets 2 shifts
+        
+        return jsonify({
+            'success': True,
+            'statistics': {
+                'total_with_preferences': total_with_prefs,
+                'total_shifts_assigned': total_shifts_assigned,
+                'expected_shifts': expected_total_shifts,
+                'got_top_12': top_12_total,
+                'got_fallback': fallback_count,
+                'bottom_6_violations': len(bottom_6_violations),
+                'rank_breakdown': rank_counts,
+                'top_12_percentage': round(top_12_total / total_shifts_assigned * 100, 1) if total_shifts_assigned else 0
+            },
+            'fallback_writers': fallback_writers,
+            'bottom_6_violations': bottom_6_violations
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/export-mailmerge')
+def export_mailmerge():
+    """Export simple CSV for mail merge: Writer Name, Shift (in chronological order)"""
+    if not session.get('is_manager'):
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    try:
+        import csv
+        from io import StringIO
+        
+        assignments = get_assignments()
+        employees = get_employees()
+        
+        # Build list of assignments in chronological order
+        shift_assignments = []
+        
+        for shift in SHIFTS:  # SHIFTS are already in chronological order
+            shift_id = shift['id']
+            
+            # Find who's assigned to this shift
+            for username, assigned_shifts in assignments.items():
+                if shift_id in assigned_shifts:
+                    writer_name = employees[username]['name']
+                    
+                    # Format date: "Dec. 14" from "2025-12-14"
+                    date_obj = datetime.strptime(shift['date'], '%Y-%m-%d')
+                    month = date_obj.strftime('%b.')
+                    day = str(date_obj.day)
+                    formatted_date = f"{month} {day}"
+                    
+                    # Format time: "11-7" from "11:00 AM - 7:00 PM", "8-4" from "8:00 AM - 4:00 PM", etc.
+                    time_str = shift['time']
+                    if '11:00 AM - 7:00 PM' in time_str:
+                        time_formatted = '11-7'
+                    elif '8:00 AM - 4:00 PM' in time_str:
+                        time_formatted = '8-4'
+                    elif '3:00 PM - 10:00 PM' in time_str:
+                        time_formatted = '3-10'
+                    else:
+                        time_formatted = time_str
+                    
+                    # Format: "Saturday, Dec. 14, 11-7 ET"
+                    shift_formatted = f"{shift['day']}, {formatted_date}, {time_formatted} ET"
+                    
+                    shift_assignments.append({
+                        'writer_name': writer_name,
+                        'shift': shift_formatted
+                    })
+        
+        # Create CSV
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow(['Writer Name', 'Shift'])
+        
+        # Write data (already in chronological order)
+        for assignment in shift_assignments:
+            writer.writerow([assignment['writer_name'], assignment['shift']])
+        
+        # Convert to bytes
+        output.seek(0)
+        csv_content = output.getvalue()
+        
+        from io import BytesIO
+        bytes_output = BytesIO()
+        bytes_output.write(csv_content.encode('utf-8'))
+        bytes_output.seek(0)
+        
+        return send_file(
+            bytes_output,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'trunk_mailmerge_{datetime.now().strftime("%Y%m%d")}.csv'
+        )
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
